@@ -187,10 +187,13 @@ func mainExitCode() int {
 		}
 	}
 
+	var metricsServer handlers.CorednsMetricsWrapper
 	if config.Cache.Enabled {
-		mux.Handle(".", handlers.NewCachingDNSHandler(forwardHandler, truncater, clock, logger))
+		metricsServer = handlers.NewCorednsMetricsWrapper(handlers.NewCachingDNSHandler(forwardHandler, truncater, clock, logger), logger)
+		mux.Handle(".", metricsServer)
 	} else {
-		mux.Handle(".", forwardHandler)
+		metricsServer = handlers.NewCorednsMetricsWrapper(forwardHandler, logger)
+		mux.Handle(".", metricsServer)
 	}
 
 	servers := []server.DNSServer{}
@@ -265,6 +268,11 @@ func mainExitCode() int {
 
 		server.ListenAndServeTLS("", "")
 	}(config.API)
+
+	if err := metricsServer.Run(); err != nil {
+		logger.Error(logTag, err.Error())
+		return 1
+	}
 
 	if err := dnsServer.Run(); err != nil {
 		logger.Error(logTag, err.Error())
